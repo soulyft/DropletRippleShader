@@ -63,3 +63,55 @@ float2 ripple(float2 position,
 
     return position + dir * disp;
 }
+
+// Multi-ripple variant that accumulates contributions from several droplets.
+[[ stitchable ]]
+float2 rippleCluster(float2 position,
+                     float2 size,
+                     float  wavelength,
+                     float  speed,
+                     float  ringWidth,
+                     constant float *rippleData,
+                     float  rippleCount)
+{
+    if (rippleData == nullptr || rippleCount <= 0.0) {
+        return position;
+    }
+
+    const float tau = 6.28318530718; // 2π
+    const float safeWavelength = max(wavelength, 1.0);
+    const float safeRing = max(ringWidth, 1.0);
+    const float falloffRadius = 0.9 * max(max(size.x, size.y), 1.0);
+
+    ushort count = (ushort)clamp(rippleCount, 0.0, 64.0);
+    float2 totalOffset = float2(0.0, 0.0);
+
+    for (ushort i = 0; i < count; ++i) {
+        ushort baseIndex = i * 4;
+        float2 center = float2(rippleData[baseIndex + 0], rippleData[baseIndex + 1]);
+        float  age    = rippleData[baseIndex + 2];
+        float  amp    = rippleData[baseIndex + 3];
+
+        if (!isfinite(age) || !isfinite(amp) || amp <= 0.0001) {
+            continue;
+        }
+
+        float2 toPix = position - center;
+        float  dist  = length(toPix);
+        float2 dir   = (dist > 1e-4) ? (toPix / dist) : float2(0.0, 0.0);
+
+        float phase = (dist / safeWavelength) - (age * speed);
+        float wave  = sin(phase * tau);
+
+        float waveFront = max(0.0, (age * speed) * safeWavelength);
+        float k = (dist - waveFront) / safeRing;
+        float envelope = exp(-k * k);
+
+        float globalFalloff = exp(-dist / falloffRadius);
+        float disp = wave * amp * envelope * globalFalloff;
+
+        totalOffset += dir * disp;
+    }
+
+    return position + totalOffset;
+}
