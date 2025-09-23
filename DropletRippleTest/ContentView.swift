@@ -9,17 +9,19 @@ import SwiftUI
 
 /// A simple "home screen" with tappable icons. Tapping triggers a full-screen ripple.
 struct ContentView: View {
-    // Ripple parameters
-    @State private var rippleCenter: CGPoint = .zero
-    @State private var rippleStart = Date()
-    @State private var isRippling = false
+    @State private var rippleEngine = RippleEngine()
 
-    // Tweakables (pixels / seconds)
-    private let amplitudePx: CGFloat = 12      // initial displacement in px
-    private let wavelengthPx: CGFloat = 140    // distance between ripple crests
-    private let speed: CGFloat = 2.2        // wave speed factor
-    private let decay: CGFloat = 1.6           // how fast amplitude decays over time
-    private let ringWidthPx: CGFloat = 36      // thickness of the moving ring
+    private let rippleParameters = RippleParameters(
+        amplitude: 12,
+        wavelength: 140,
+        speed: 2.2,
+        decay: 1.6,
+        ringWidth: 36,
+        minimumAmplitude: 0.15,
+        maximumSampleOffset: 72
+    )
+
+    private let rippleSpaceName = "ripple-field-space"
 
     // Simple data model for icons
     private let icons: [IconData] = (0..<20).map { i in
@@ -32,80 +34,35 @@ struct ContentView: View {
     }
 
     var body: some View {
-        GeometryReader { screenGeo in
-            // Base content that always renders (no frame-by-frame updates)
-            let base = ZStack {
-                HomeGrid(
-                    icons: icons,
-                    onIconTap: { iconFrameInScreen in
-                        rippleCenter = CGPoint(x: iconFrameInScreen.midX, y: iconFrameInScreen.midY)
-                        rippleStart = Date()
-                        isRippling = true
-                    }
-                )
-                Rectangle()
+        ZStack {
+            HomeGrid(
+                icons: icons,
+                coordinateSpace: .named(rippleSpaceName)
+            ) { iconCenter in
+                rippleEngine.emit(at: iconCenter)
+            }
+
+            Rectangle()
                 .ignoresSafeArea()
                 .foregroundStyle(
                     LinearGradient(
-                        gradient: Gradient(colors: [Color.cyan.opacity(0.3), Color.blue.opacity(0.5) ]),
+                        gradient: Gradient(colors: [Color.cyan.opacity(0.3), Color.blue.opacity(0.5)]),
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
-                   
-                   
                 )
-            }
-            
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground))
-            // Tapping anywhere fires a ripple
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { value in
-                        rippleCenter = value.location
-                        rippleStart = Date()
-                        isRippling = true
-                    }
-            )
-
-            Group {
-                if isRippling {
-                    TimelineView(.animation) { ctx in
-                        let elapsed = rippleStart.distance(to: ctx.date)
-                        let center = rippleCenter
-                        let ampNow = max(0, amplitudePx * exp(-decay * elapsed))
-                        let enabled = ampNow > 0.25
-
-                        base
-                            .visualEffect { effects, proxy in
-                                let size = proxy.size
-                                return effects
-                                    .distortionEffect(
-                                        ShaderLibrary.ripple(
-                                            .float2(size),
-                                            .float2(center),
-                                            .float(Float(elapsed)),
-                                            .float(Float(speed)),
-                                            .float(Float(wavelengthPx)),
-                                            .float(Float(ampNow)),
-                                            .float(Float(ringWidthPx))
-                                        ),
-                                        maxSampleOffset: CGSize(width: amplitudePx, height: amplitudePx),
-                                        isEnabled: enabled
-                                    )
-                            }
-                            .onChange(of: elapsed) { old, newValue in
-                                if newValue > 4 { isRippling = false }
-                            }
-                    }
-                } else {
-                    base
-                }
-            }
-           
         }
-       
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+        .rippleField(engine: rippleEngine, parameters: rippleParameters)
+        .coordinateSpace(name: rippleSpaceName)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { value in
+                    rippleEngine.emit(at: value.location)
+                }
+        )
     }
 }
 
@@ -116,19 +73,26 @@ struct IconData: Identifiable {
 }
 
 /// A grid of individual icon views.
-/// Each icon calculates its own frame in screen space and reports it up when tapped.
+/// Each icon calculates its own centre in the supplied coordinate space and reports it upward when tapped.
 struct HomeGrid: View {
     let icons: [IconData]
-    let onIconTap: (CGRect) -> Void
+    let coordinateSpace: CoordinateSpace
+    let onIconTap: (CGPoint) -> Void
 
     // A nice, iOS-like grid
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 24, alignment: .center), count: 4)
 
+    init(icons: [IconData], coordinateSpace: CoordinateSpace = .local, onIconTap: @escaping (CGPoint) -> Void) {
+        self.icons = icons
+        self.coordinateSpace = coordinateSpace
+        self.onIconTap = onIconTap
+    }
+
     var body: some View {
         LazyVGrid(columns: columns, spacing: 24) {
             ForEach(icons) { icon in
-                IconTile(icon: icon) { frameInScreen in
-                    onIconTap(frameInScreen)
+                IconTile(icon: icon, coordinateSpace: coordinateSpace) { center in
+                    onIconTap(center)
                 }
             }
         }
@@ -137,12 +101,13 @@ struct HomeGrid: View {
     }
 }
 
-/// A single "app icon" tile. Tapping it reports its frame (in screen coords) upward.
+/// A single "app icon" tile. Tapping it reports its centre (in the provided coordinate space) upward.
 struct IconTile: View {
     let icon: IconData
-    let tapped: (CGRect) -> Void
+    let coordinateSpace: CoordinateSpace
+    let tapped: (CGPoint) -> Void
 
-    @State private var frameInScreen: CGRect = .zero
+    @State private var centerInSpace: CGPoint = .zero
 
     var body: some View {
         VStack(spacing: 8) {
@@ -165,16 +130,19 @@ struct IconTile: View {
         .contentShape(Rectangle())
         .background(
             GeometryReader { proxy in
-                // This reader does not affect layout; it just captures the global frame.
+                let frame = proxy.frame(in: coordinateSpace)
+
                 Color.clear
-                    .onAppear { frameInScreen = proxy.frame(in: .global) }
-                    .onChange(of: proxy.size) { _ in
-                        frameInScreen = proxy.frame(in: .global)
+                    .onAppear {
+                        centerInSpace = CGPoint(x: frame.midX, y: frame.midY)
+                    }
+                    .onChange(of: frame) { newFrame in
+                        centerInSpace = CGPoint(x: newFrame.midX, y: newFrame.midY)
                     }
             }
         )
         .onTapGesture {
-            tapped(frameInScreen)
+            tapped(centerInSpace)
         }
         .frame(height: 96) // grid cell height
     }
