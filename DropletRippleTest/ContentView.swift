@@ -51,18 +51,19 @@ struct ContentView: View {
                         endPoint: .bottomTrailing
                     )
                 )
+                .allowsHitTesting(false)
         }
+        .rippleField(engine: rippleEngine, parameters: rippleParameters)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
-        .rippleField(engine: rippleEngine, parameters: rippleParameters)
         .coordinateSpace(name: rippleSpaceName)
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onEnded { value in
-                    rippleEngine.emit(at: value.location)
-                }
-        )
+//        .gesture(
+//            DragGesture(minimumDistance: 0)
+//                .onEnded { value in
+//                    rippleEngine.emit(at: value.location)
+//                }
+//        )
     }
 }
 
@@ -112,13 +113,25 @@ struct IconTile: View {
     var body: some View {
         VStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.regularMaterial)
+                .foregroundStyle(.white)
                 .overlay(
                     Image(systemName: icon.systemName)
                         .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(.primary)
                 )
                 .frame(width: 64, height: 64)
+                .background(
+                    GeometryReader { proxy in
+                        let rect = proxy.frame(in: coordinateSpace)
+                        Color.clear
+                            .onAppear {
+                                centerInSpace = CGPoint(x: rect.midX, y: rect.midY)
+                            }
+                            .onChange(of: rect) { _, newRect in
+                                centerInSpace = CGPoint(x: newRect.midX, y: newRect.midY)
+                            }
+                    }
+                )
                 .shadow(radius: 2, y: 1)
 
             Text(icon.title)
@@ -128,19 +141,6 @@ struct IconTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .contentShape(Rectangle())
-        .background(
-            GeometryReader { proxy in
-                let frame = proxy.frame(in: coordinateSpace)
-
-                Color.clear
-                    .onAppear {
-                        centerInSpace = CGPoint(x: frame.midX, y: frame.midY)
-                    }
-                    .onChange(of: frame) { newFrame in
-                        centerInSpace = CGPoint(x: newFrame.midX, y: newFrame.midY)
-                    }
-            }
-        )
         .onTapGesture {
             tapped(centerInSpace)
         }

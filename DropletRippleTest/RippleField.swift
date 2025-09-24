@@ -107,45 +107,43 @@ final class RippleEngine {
     }
 }
 
-private struct RippleState: Equatable {
+struct RippleState: Equatable {
     var center: CGPoint
     var age: TimeInterval
     var amplitude: CGFloat
 }
 
-private struct MultiRippleModifier: ViewModifier {
-    let states: [RippleState]
+struct SingleRippleModifier: ViewModifier {
+    let center: CGPoint
+    let age: TimeInterval
+    let amplitude: CGFloat
     let parameters: RippleParameters
 
     func body(content: Content) -> some View {
-        guard !states.isEmpty else { return content }
+        // Derive current amplitude (already decayed in engine state).
+        let amp = max(0, amplitude)
+        let enabled = amp > parameters.minimumAmplitude
+        let maxSample = min(parameters.maximumSampleOffset,
+                            max(parameters.minimumAmplitude, amp))
 
-        let rippleBuffer: [Float] = states.flatMap { state in
-            [
-                Float(state.center.x),
-                Float(state.center.y),
-                Float(state.age),
-                Float(state.amplitude)
-            ]
-        }
-
-        let aggregateAmplitude = states.reduce(0) { $0 + $1.amplitude }
-        let maxSample = min(parameters.maximumSampleOffset, max(parameters.minimumAmplitude, aggregateAmplitude))
-
-        return content.visualEffect { effects, proxy in
-            effects.distortionEffect(
-                ShaderLibrary.rippleCluster(
-                    .float2(proxy.size),
-                    .float(Float(parameters.wavelength)),
-                    .float(Float(parameters.speed)),
-                    .float(Float(parameters.ringWidth)),
-                    .floatArray(rippleBuffer),
-                    .float(Float(states.count))
-                ),
-                maxSampleOffset: CGSize(width: maxSample, height: maxSample),
-                isEnabled: true
-            )
-        }
+        return content
+            .compositingGroup()
+            .visualEffect { effects, proxy in
+                return effects.distortionEffect(
+                    ShaderLibrary.ripple(
+                        .float2(proxy.size),
+                        .float2(center),
+                        .float(Float(age)),
+                        .float(Float(parameters.speed)),
+                        .float(Float(parameters.wavelength)),
+                        .float(Float(amp)),
+                        .float(Float(parameters.ringWidth))
+                    ),
+                    maxSampleOffset: CGSize(width: maxSample, height: maxSample),
+                    isEnabled: enabled
+                )
+            }
+            .allowsHitTesting(false)
     }
 }
 
@@ -154,24 +152,52 @@ struct RippleField<Content: View>: View {
     @Bindable private var engine: RippleEngine
     private let parameters: RippleParameters
     private let content: Content
+    private let eventSpace: CoordinateSpace
+    @State private var containerFrameInEventSpace: CGRect = .zero
 
-    init(engine: RippleEngine, parameters: RippleParameters = .default, @ViewBuilder content: () -> Content) {
+    init(engine: RippleEngine,
+         parameters: RippleParameters = .default,
+         eventSpace: CoordinateSpace = .global,
+         @ViewBuilder content: () -> Content) {
         self._engine = Bindable(engine)
         self.parameters = parameters
+        self.eventSpace = eventSpace
         self.content = content()
     }
 
     var body: some View {
-        Group {
+        // Capture the container's frame in the event space so we can convert incoming
+        // event centers into this view's local space.
+        let capturedContent = content
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear {
+                            containerFrameInEventSpace = proxy.frame(in: eventSpace)
+                        }
+                        .onChange(of: proxy.size) {
+                            containerFrameInEventSpace = proxy.frame(in: eventSpace)
+                        }
+                }
+            )
+
+        return Group {
             if engine.isIdle {
-                content
+                capturedContent
             } else {
                 TimelineView(.animation) { timeline in
                     let states = engine.rippleStates(at: timeline.date, parameters: parameters)
-                    if states.isEmpty {
-                        content
+
+                    if let first = states.first {
+                        // Treat incoming centers as already in the same coordinate space as the effect
+                        let localCenter = first.center
+                        capturedContent
+                            .modifier(SingleRippleModifier(center: localCenter,
+                                                           age: first.age,
+                                                           amplitude: first.amplitude,
+                                                           parameters: parameters))
                     } else {
-                        content.modifier(MultiRippleModifier(states: states, parameters: parameters))
+                        capturedContent
                     }
                 }
             }
@@ -181,9 +207,13 @@ struct RippleField<Content: View>: View {
 
 extension View {
     /// Applies a multi-drop ripple distortion around the receiving view.
-    func rippleField(engine: RippleEngine, parameters: RippleParameters = .default) -> some View {
-        RippleField(engine: engine, parameters: parameters) {
-            self
-        }
+    func rippleField(engine: RippleEngine,
+                     parameters: RippleParameters = .default) -> some View {
+        RippleField(engine: engine, parameters: parameters, eventSpace: .global) { self }
+    }
+    func rippleField(engine: RippleEngine,
+                     parameters: RippleParameters = .default,
+                     eventSpace: CoordinateSpace) -> some View {
+        RippleField(engine: engine, parameters: parameters, eventSpace: eventSpace) { self }
     }
 }
