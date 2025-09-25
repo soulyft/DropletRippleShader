@@ -10,6 +10,7 @@ import SwiftUI
 /// A simple "home screen" with tappable icons. Tapping triggers a full-screen ripple.
 struct ContentView: View {
     @State private var rippleEngine = RippleEngine()
+    @State private var isMulti: Bool = true
 
     private let rippleParameters = RippleParameters(
         amplitude: 12,
@@ -53,11 +54,30 @@ struct ContentView: View {
                 )
                 .allowsHitTesting(false)
         }
-        .rippleField(engine: rippleEngine, parameters: rippleParameters)
+        .rippleField(engine: rippleEngine, parameters: rippleParameters, mode: isMulti ? .multi : .single)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .coordinateSpace(name: rippleSpaceName)
         .contentShape(Rectangle())
+        .safeAreaInset(edge: .bottom) {
+            HStack(spacing: 12) {
+                Text("Ripple mode")
+                    .font(.footnote)
+                Toggle(isOn: $isMulti) {
+                    Text(isMulti ? "Multi" : "Single")
+                        .font(.footnote)
+                }
+                .toggleStyle(.switch)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+        }
 //        .gesture(
 //            DragGesture(minimumDistance: 0)
 //                .onEnded { value in

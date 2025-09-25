@@ -74,6 +74,12 @@ float2 rippleCluster(float2 position,
                      constant float *rippleData,
                      float  rippleCount)
 {
+    // Global sanity guard for scalar params to avoid NaNs/Infs propagating
+    if (!isfinite(wavelength) || !isfinite(speed) || !isfinite(ringWidth) ||
+        !isfinite(size.x) || !isfinite(size.y)) {
+        return position;
+    }
+
     if (rippleData == nullptr || rippleCount <= 0.0) {
         return position;
     }
@@ -88,16 +94,26 @@ float2 rippleCluster(float2 position,
 
     for (ushort i = 0; i < count; ++i) {
         ushort baseIndex = i * 4;
-        float2 center = float2(rippleData[baseIndex + 0], rippleData[baseIndex + 1]);
-        float  age    = rippleData[baseIndex + 2];
-        float  amp    = rippleData[baseIndex + 3];
+        float  cx  = rippleData[baseIndex + 0];
+        float  cy  = rippleData[baseIndex + 1];
+        float  age = rippleData[baseIndex + 2];
+        float  amp = rippleData[baseIndex + 3];
 
-        if (!isfinite(age) || !isfinite(amp) || amp <= 0.0001) {
+        // Per-ripple validation (skip invalid entries)
+        if (!isfinite(cx) || !isfinite(cy) ||
+            !isfinite(age) || !isfinite(amp) ||
+            amp <= 0.0001) {
             continue;
         }
 
-        float2 toPix = position - center;
-        float  dist  = length(toPix);
+        float2 center = float2(cx, cy);
+        float2 toPix  = position - center;
+        float  dist   = length(toPix);
+
+        if (!isfinite(dist)) {
+            continue;
+        }
+
         float2 dir   = (dist > 1e-4) ? (toPix / dist) : float2(0.0, 0.0);
 
         float phase = (dist / safeWavelength) - (age * speed);

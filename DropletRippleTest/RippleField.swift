@@ -113,6 +113,11 @@ struct RippleState: Equatable {
     var amplitude: CGFloat
 }
 
+enum RippleMode {
+    case single
+    case multi
+}
+
 struct SingleRippleModifier: ViewModifier {
     let center: CGPoint
     let age: TimeInterval
@@ -153,40 +158,50 @@ struct MultiRippleModifier: ViewModifier {
     let parameters: RippleParameters
 
     func body(content: Content) -> some View {
-        let amplitudes = states.map(\.amplitude)
-        let maxAmplitude = amplitudes.max() ?? 0
+        // Conservative sampling radius (cap + floor)
+        let maxAmplitude = states.map(\.amplitude).max() ?? 0
         let sampleRadius = maxAmplitude + parameters.ringWidth
         let maxSample = min(parameters.maximumSampleOffset,
                             max(parameters.minimumAmplitude, sampleRadius))
-        let effectEnabled = maxAmplitude > parameters.minimumAmplitude
 
         return content
             .compositingGroup()
             .visualEffect { effects, proxy in
-                guard !states.isEmpty else { return effects }
+                // Validate size
+                let size = proxy.size
+                let sizeOK = size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
 
-                let clampedStates = states.prefix(64)
+                // Clamp states to shader's max and build packed buffer [x, y, age, amp] * N
+                let clamped = Array(states.prefix(64))
                 var packed: [Float] = []
-                packed.reserveCapacity(clampedStates.count * 4)
-
-                for state in clampedStates {
-                    packed.append(Float(state.center.x))
-                    packed.append(Float(state.center.y))
-                    packed.append(Float(state.age))
-                    packed.append(Float(state.amplitude))
+                packed.reserveCapacity(clamped.count * 4)
+                if sizeOK {
+                    for s in clamped {
+                        // Guard each value; replace non-finite with 0
+                        let x = Float(s.center.x).isFinite ? Float(s.center.x) : 0
+                        let y = Float(s.center.y).isFinite ? Float(s.center.y) : 0
+                        let a = Float(s.age).isFinite ? Float(s.age) : 0
+                        let amp = Float(s.amplitude).isFinite ? Float(s.amplitude) : 0
+                        if amp > 0.0001 {
+                            packed.append(contentsOf: [x, y, a, amp])
+                        }
+                    }
                 }
+                let count = packed.count / 4
+                // Only enable the effect when we have a sane size and at least one valid ripple
+                let isEnabled = sizeOK && count > 0
 
                 return effects.distortionEffect(
                     ShaderLibrary.rippleCluster(
-                        .float2(proxy.size),
-                        .float(Float(parameters.wavelength)),
-                        .float(Float(parameters.speed)),
-                        .float(Float(parameters.ringWidth)),
-                        .floatArray(packed),
-                        .float(Float(clampedStates.count))
+                        .float2(size),                               // size (points)
+                        .float(Float(parameters.wavelength)),        // wavelength
+                        .float(Float(parameters.speed)),             // speed
+                        .float(Float(parameters.ringWidth)),         // ringWidth
+                        .floatArray(packed),                         // rippleData
+                        .float(Float(count))                         // rippleCount
                     ),
                     maxSampleOffset: CGSize(width: maxSample, height: maxSample),
-                    isEnabled: effectEnabled
+                    isEnabled: isEnabled
                 )
             }
             .allowsHitTesting(false)
@@ -199,15 +214,18 @@ struct RippleField<Content: View>: View {
     private let parameters: RippleParameters
     private let content: Content
     private let eventSpace: CoordinateSpace
+    private let mode: RippleMode
     @State private var containerFrameInEventSpace: CGRect = .zero
 
     init(engine: RippleEngine,
          parameters: RippleParameters = .default,
          eventSpace: CoordinateSpace = .global,
+         mode: RippleMode = .multi,
          @ViewBuilder content: () -> Content) {
         self._engine = Bindable(engine)
         self.parameters = parameters
         self.eventSpace = eventSpace
+        self.mode = mode
         self.content = content()
     }
 
@@ -234,17 +252,25 @@ struct RippleField<Content: View>: View {
                 TimelineView(.animation) { timeline in
                     let states = engine.rippleStates(at: timeline.date, parameters: parameters)
 
-                    let origin = containerFrameInEventSpace.origin
-                    let localStates = states.map { state -> RippleState in
-                        var local = state
-                        local.center = CGPoint(x: state.center.x - origin.x,
-                                               y: state.center.y - origin.y)
-                        return local
+                    if states.isEmpty {
+                        capturedContent
+                    } else {
+                        switch mode {
+                        case .multi:
+                            capturedContent
+                                .modifier(MultiRippleModifier(states: states, parameters: parameters))
+                        case .single:
+                            if let first = states.first {
+                                capturedContent
+                                    .modifier(SingleRippleModifier(center: first.center,
+                                                                   age: first.age,
+                                                                   amplitude: first.amplitude,
+                                                                   parameters: parameters))
+                            } else {
+                                capturedContent
+                            }
+                        }
                     }
-
-                    capturedContent
-                        .modifier(MultiRippleModifier(states: localStates,
-                                                      parameters: parameters))
                 }
             }
         }
@@ -255,11 +281,22 @@ extension View {
     /// Applies a multi-drop ripple distortion around the receiving view.
     func rippleField(engine: RippleEngine,
                      parameters: RippleParameters = .default) -> some View {
-        RippleField(engine: engine, parameters: parameters, eventSpace: .global) { self }
+        RippleField(engine: engine, parameters: parameters, eventSpace: .global, mode: .multi) { self }
     }
     func rippleField(engine: RippleEngine,
                      parameters: RippleParameters = .default,
                      eventSpace: CoordinateSpace) -> some View {
-        RippleField(engine: engine, parameters: parameters, eventSpace: eventSpace) { self }
+        RippleField(engine: engine, parameters: parameters, eventSpace: eventSpace, mode: .multi) { self }
+    }
+    func rippleField(engine: RippleEngine,
+                     parameters: RippleParameters = .default,
+                     mode: RippleMode) -> some View {
+        RippleField(engine: engine, parameters: parameters, eventSpace: .global, mode: mode) { self }
+    }
+    func rippleField(engine: RippleEngine,
+                     parameters: RippleParameters = .default,
+                     eventSpace: CoordinateSpace,
+                     mode: RippleMode) -> some View {
+        RippleField(engine: engine, parameters: parameters, eventSpace: eventSpace, mode: mode) { self }
     }
 }
