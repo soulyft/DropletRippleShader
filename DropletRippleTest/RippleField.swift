@@ -26,7 +26,7 @@ struct RippleParameters {
         decay: 1.6,
         ringWidth: 36,
         minimumAmplitude: 0.15,
-        maximumSampleOffset: 72
+        maximumSampleOffset: 160
     )
 }
 
@@ -43,17 +43,36 @@ final class RippleEngine {
     private(set) var events: [Event] = []
     var maximumSimultaneousRipples: Int
 
-    init(maximumSimultaneousRipples: Int = 20) {
+    // Coalescing to avoid emit floods from small, rapid movements
+    private var lastEmitPoint: CGPoint? = nil
+    private var lastEmitTime: Date? = nil
+    /// Minimum spacing to accept a new emit
+    var minimumEmitInterval: TimeInterval = 0.035
+    var minimumEmitDistance: CGFloat = 3
+
+    init(maximumSimultaneousRipples: Int = 12) {
         self.maximumSimultaneousRipples = max(1, maximumSimultaneousRipples)
     }
 
     /// Emits a new ripple originating at the provided point (in the field's coordinate space).
     func emit(at point: CGPoint, timestamp: Date = .now) {
+        // Drop near-duplicate emits that arrive within a tiny window in time & space
+        if let t0 = lastEmitTime, timestamp.timeIntervalSince(t0) < minimumEmitInterval,
+           let p0 = lastEmitPoint {
+            let dx = point.x - p0.x
+            let dy = point.y - p0.y
+            if (dx*dx + dy*dy) < (minimumEmitDistance * minimumEmitDistance) {
+                return
+            }
+        }
+
         var pending = events
         pending.append(Event(birth: timestamp, center: point))
         if pending.count > maximumSimultaneousRipples {
             pending.removeFirst(pending.count - maximumSimultaneousRipples)
         }
+        lastEmitPoint = point
+        lastEmitTime = timestamp
         events = pending
     }
 
@@ -148,7 +167,6 @@ struct SingleRippleModifier: ViewModifier {
                     isEnabled: enabled
                 )
             }
-            .allowsHitTesting(false)
     }
 }
 
@@ -162,7 +180,7 @@ struct MultiRippleModifier: ViewModifier {
         let maxAmplitude = states.map(\.amplitude).max() ?? 0
         let sampleRadius = maxAmplitude + parameters.ringWidth
         let maxSample = min(parameters.maximumSampleOffset,
-                            max(parameters.minimumAmplitude, sampleRadius))
+                            max(parameters.minimumAmplitude, sampleRadius + 6))
 
         return content
             .compositingGroup()
@@ -197,14 +215,12 @@ struct MultiRippleModifier: ViewModifier {
                         .float(Float(parameters.wavelength)),        // wavelength
                         .float(Float(parameters.speed)),             // speed
                         .float(Float(parameters.ringWidth)),         // ringWidth
-                        .floatArray(packed),                         // rippleData
-                        .float(Float(count))                         // rippleCount
+                        .floatArray(packed)                          // rippleData (pointer + length provided by stitching)
                     ),
                     maxSampleOffset: CGSize(width: maxSample, height: maxSample),
                     isEnabled: isEnabled
                 )
             }
-            .allowsHitTesting(false)
     }
 }
 
@@ -237,11 +253,11 @@ struct RippleField<Content: View>: View {
                 GeometryReader { proxy in
                     let frame = proxy.frame(in: eventSpace)
                     Color.clear
-                        .onAppear {
-                            containerFrameInEventSpace = frame
-                        }
-                        .onChange(of: frame) { newFrame in
-                            containerFrameInEventSpace = newFrame
+                        .onChange(of: frame, initial: true) { oldFrame, newFrame in
+                            // Keep the stored frame in sync with the event space so ripple centers map correctly.
+                            if oldFrame != newFrame {
+                                containerFrameInEventSpace = newFrame
+                            }
                         }
                 }
             )

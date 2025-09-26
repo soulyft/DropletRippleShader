@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import QuartzCore
 
 /// A simple "home screen" with tappable icons. Tapping triggers a full-screen ripple.
 struct ContentView: View {
@@ -36,25 +37,38 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+
+            // Interactive grid (fully visible and receives gestures)
             HomeGrid(
                 icons: icons,
                 coordinateSpace: .named(rippleSpaceName)
             ) { iconCenter in
                 rippleEngine.emit(at: iconCenter)
+                print("fired")
             }
+            .opacity(0.1)
 
-            Rectangle()
-                .ignoresSafeArea()
-                .foregroundStyle(
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.cyan.opacity(0.3), Color.blue.opacity(0.5)]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+            // Visual overlay that duplicates background + grid for the ripple effect,
+            // but with hit testing disabled so taps fall through to the interactive grid.
+            ZStack {
+                HomeGrid(
+                    icons: icons,
+                    coordinateSpace: .named(rippleSpaceName)
+                ) { _ in }
+                Rectangle()
+                    .ignoresSafeArea()
+                    .foregroundStyle(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.cyan.opacity(0.3), Color.blue.opacity(0.5)]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .allowsHitTesting(false)
+
+            }
+            .allowsHitTesting(false)
+            .rippleField(engine: rippleEngine, parameters: rippleParameters, mode: isMulti ? .multi : .single)
         }
-        .rippleField(engine: rippleEngine, parameters: rippleParameters, mode: isMulti ? .multi : .single)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .coordinateSpace(name: rippleSpaceName)
@@ -80,7 +94,7 @@ struct ContentView: View {
         }
 //        .gesture(
 //            DragGesture(minimumDistance: 0)
-//                .onEnded { value in
+//                .onChanged { value in
 //                    rippleEngine.emit(at: value.location)
 //                }
 //        )
@@ -129,6 +143,7 @@ struct IconTile: View {
     let tapped: (CGPoint) -> Void
 
     @State private var centerInSpace: CGPoint = .zero
+    @State private var lastEmitTime: CFTimeInterval = 0
 
     var body: some View {
         VStack(spacing: 8) {
