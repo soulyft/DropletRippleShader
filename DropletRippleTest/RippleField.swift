@@ -235,12 +235,13 @@ struct RippleField<Content: View>: View {
         let capturedContent = content
             .background(
                 GeometryReader { proxy in
+                    let frame = proxy.frame(in: eventSpace)
                     Color.clear
                         .onAppear {
-                            containerFrameInEventSpace = proxy.frame(in: eventSpace)
+                            containerFrameInEventSpace = frame
                         }
-                        .onChange(of: proxy.size) {
-                            containerFrameInEventSpace = proxy.frame(in: eventSpace)
+                        .onChange(of: frame) { newFrame in
+                            containerFrameInEventSpace = newFrame
                         }
                 }
             )
@@ -251,16 +252,28 @@ struct RippleField<Content: View>: View {
             } else {
                 TimelineView(.animation) { timeline in
                     let states = engine.rippleStates(at: timeline.date, parameters: parameters)
+                    let localStates = states.map { state -> RippleState in
+                        guard containerFrameInEventSpace.origin.x.isFinite,
+                              containerFrameInEventSpace.origin.y.isFinite,
+                              containerFrameInEventSpace.width.isFinite,
+                              containerFrameInEventSpace.height.isFinite else {
+                            return state
+                        }
+                        var adjusted = state
+                        adjusted.center.x -= containerFrameInEventSpace.minX
+                        adjusted.center.y -= containerFrameInEventSpace.minY
+                        return adjusted
+                    }
 
-                    if states.isEmpty {
+                    if localStates.isEmpty {
                         capturedContent
                     } else {
                         switch mode {
                         case .multi:
                             capturedContent
-                                .modifier(MultiRippleModifier(states: states, parameters: parameters))
+                                .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
                         case .single:
-                            if let first = states.first {
+                            if let first = localStates.first {
                                 capturedContent
                                     .modifier(SingleRippleModifier(center: first.center,
                                                                    age: first.age,
