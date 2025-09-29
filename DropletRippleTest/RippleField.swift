@@ -20,11 +20,11 @@ struct RippleParameters {
     var maximumSampleOffset: CGFloat
 
     static let `default` = RippleParameters(
-        amplitude: 12,
+        amplitude: 10,
         wavelength: 140,
         speed: 2.2,
-        decay: 1.6,
-        ringWidth: 36,
+        decay: 1.8,
+        ringWidth: 30,
         minimumAmplitude: 0.15,
         maximumSampleOffset: 160
     )
@@ -47,15 +47,22 @@ final class RippleEngine {
     private var lastEmitPoint: CGPoint? = nil
     private var lastEmitTime: Date? = nil
     /// Minimum spacing to accept a new emit
-    var minimumEmitInterval: TimeInterval = 0.035
-    var minimumEmitDistance: CGFloat = 3
+    var minimumEmitInterval: TimeInterval = 0.06
+    var minimumEmitDistance: CGFloat = 6
 
-    init(maximumSimultaneousRipples: Int = 12) {
+    init(maximumSimultaneousRipples: Int = 10) {
         self.maximumSimultaneousRipples = max(1, maximumSimultaneousRipples)
+        self.minimumEmitInterval = 0.06
+        self.minimumEmitDistance = 6
     }
 
     /// Emits a new ripple originating at the provided point (in the field's coordinate space).
     func emit(at point: CGPoint, timestamp: Date = .now) {
+        // Skip if we're already at capacity.
+        if events.count >= maximumSimultaneousRipples {
+            return
+        }
+
         // Drop near-duplicate emits that arrive within a tiny window in time & space
         if let t0 = lastEmitTime, timestamp.timeIntervalSince(t0) < minimumEmitInterval,
            let p0 = lastEmitPoint {
@@ -176,11 +183,13 @@ struct MultiRippleModifier: ViewModifier {
     let parameters: RippleParameters
 
     func body(content: Content) -> some View {
-        // Conservative sampling radius (cap + floor)
+        // Adaptive sampling radius that scales with ripple count and amplitude
         let maxAmplitude = states.map(\.amplitude).max() ?? 0
-        let sampleRadius = maxAmplitude + parameters.ringWidth
+        let rippleCount = Double(states.count)
+        let countFactor = rippleCount > 0 ? (1.0 + 0.5 * log(max(1.0, rippleCount))) : 1.0
+        let sampleRadius = CGFloat(countFactor) * maxAmplitude + parameters.ringWidth
         let maxSample = min(parameters.maximumSampleOffset,
-                            max(parameters.minimumAmplitude, sampleRadius + 6))
+                            max(parameters.minimumAmplitude, sampleRadius + 15))
 
         return content
             .compositingGroup()

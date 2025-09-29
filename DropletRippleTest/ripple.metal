@@ -116,10 +116,15 @@ float2 rippleCluster(float2 position,
         float  age = rippleData[baseIndex + 2];
         float  amp = rippleData[baseIndex + 3];
 
-        // Per-ripple validation (skip invalid entries)
+        // Per-ripple validation (skip invalid or negligible entries)
         if (!isfinite(cx) || !isfinite(cy) ||
             !isfinite(age) || !isfinite(amp) ||
             amp <= 0.0001) {
+            continue;
+        }
+
+        // Skip ripples with extremely low amplitude that wouldn't contribute meaningfully
+        if (amp < 0.001) {
             continue;
         }
 
@@ -158,6 +163,13 @@ float2 rippleCluster(float2 position,
 
         // Accumulate displacement vector
         totalOffset += dir * disp;
+    }
+
+    // Clamp total displacement magnitude to prevent extreme sampling offsets
+    const float maxTotalDisp = 0.8 * safeWavelength;
+    float totalLength = length(totalOffset);
+    if (totalLength > maxTotalDisp && totalLength > 0.0) {
+        totalOffset *= (maxTotalDisp / totalLength);
     }
 
     return position + totalOffset;
