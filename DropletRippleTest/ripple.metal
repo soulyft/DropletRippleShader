@@ -105,6 +105,8 @@ float2 rippleCluster(float2 position,
     const float safeRing = max(ringWidth, 1.0);
     // Use half the view diagonal; stronger falloff prevents oversampling at edges
     const float falloffRadius = 0.5 * length(size);
+
+    // Clamp to capacity; convert float count to ripple count (4 floats per ripple)
     int limitedFloatCount = clamp(rippleFloatCount, 0, 64 * 4);
     int count = limitedFloatCount / 4;
 

@@ -224,8 +224,7 @@ struct MultiRippleModifier: ViewModifier {
                         .float(Float(parameters.wavelength)),        // wavelength
                         .float(Float(parameters.speed)),             // speed
                         .float(Float(parameters.ringWidth)),         // ringWidth
-                        .floatArray(packed),                         // rippleData (pointer + length provided by stitching)
-                        .int(Int32(packed.count))                    // rippleFloatCount (number of floats)
+                        .floatArray(packed)                          // rippleData (pointer + length provided by stitching)
                     ),
                     maxSampleOffset: CGSize(width: maxSample, height: maxSample),
                     isEnabled: isEnabled
