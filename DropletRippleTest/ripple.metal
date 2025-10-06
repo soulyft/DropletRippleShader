@@ -73,7 +73,7 @@ float2 ripple(float2 position,
       - speed:       wave temporal frequency multiplier (global)
       - ringWidth:   thickness of ripple rings in pixels (global)
       - rippleData:  array of ripple parameters per ripple, packed as [centerX, centerY, age, amplitude]
-      - rippleCount: number of ripples in rippleData to process
+      - rippleFloatCount: number of floats provided in rippleData
 
     Returns the new sampling position (float2) after accumulating ripple displacements
     from multiple droplets. This function sums the effects of all active ripples,
@@ -88,7 +88,7 @@ float2 rippleCluster(float2 position,
                      float  speed,
                      float  ringWidth,
                      constant float *rippleData,
-                     int    rippleCount)
+                     int    rippleFloatCount)
 {
     // Global sanity guard for scalar params to avoid NaNs/Infs propagating
     if (!isfinite(wavelength) || !isfinite(speed) || !isfinite(ringWidth) ||
@@ -96,7 +96,7 @@ float2 rippleCluster(float2 position,
         return position;
     }
 
-    if (rippleData == nullptr || rippleCount <= 0) {
+    if (rippleData == nullptr || rippleFloatCount < 4) {
         return position;
     }
 
@@ -105,12 +105,16 @@ float2 rippleCluster(float2 position,
     const float safeRing = max(ringWidth, 1.0);
     // Use half the view diagonal; stronger falloff prevents oversampling at edges
     const float falloffRadius = 0.5 * length(size);
-    int count = clamp(rippleCount, 0, 64);
+    int limitedFloatCount = clamp(rippleFloatCount, 0, 64 * 4);
+    int count = limitedFloatCount / 4;
 
     float2 totalOffset = float2(0.0, 0.0);
 
     for (int i = 0; i < count; ++i) {
         int baseIndex = i * 4;
+        if ((baseIndex + 3) >= limitedFloatCount) {
+            break;
+        }
         float  cx  = rippleData[baseIndex + 0];
         float  cy  = rippleData[baseIndex + 1];
         float  age = rippleData[baseIndex + 2];
