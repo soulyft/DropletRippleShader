@@ -1,6 +1,11 @@
 import SwiftUI
 import CoreGraphics
 import Observation
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Tunable constants that describe the behaviour of a ripple field.
 struct RippleParameters {
@@ -144,6 +149,27 @@ enum RippleMode {
     case multi
 }
 
+/// Visual styling options that can be layered on top of the base ripple distortion.
+enum RippleFieldStyle: Equatable {
+    case distortionOnly
+    case prismatic(RipplePrismConfiguration)
+    case luminous(RippleGlowConfiguration)
+}
+
+struct RipplePrismConfiguration: Equatable {
+    var refractionStrength: CGFloat
+    var dispersion: CGFloat
+    var tintStrength: CGFloat
+    var tintColor: Color
+}
+
+struct RippleGlowConfiguration: Equatable {
+    var glowStrength: CGFloat
+    var highlightPower: CGFloat
+    var highlightBoost: CGFloat
+    var glowColor: Color
+}
+
 struct SingleRippleModifier: ViewModifier {
     let center: CGPoint
     let age: TimeInterval
@@ -233,6 +259,120 @@ struct MultiRippleModifier: ViewModifier {
     }
 }
 
+/// Adds a prismatic colour refraction overlay on top of the ripple distortion.
+struct PrismaticRippleColorModifier: ViewModifier {
+    let states: [RippleState]
+    let parameters: RippleParameters
+    let configuration: RipplePrismConfiguration
+
+    func body(content: Content) -> some View {
+        let maxAmplitude = states.map(\.amplitude).max() ?? 0
+        let rippleCount = Double(states.count)
+        let countFactor = rippleCount > 0 ? (1.0 + 0.5 * log(max(1.0, rippleCount))) : 1.0
+        let sampleRadius = CGFloat(countFactor) * maxAmplitude + parameters.ringWidth
+        let maxSample = min(parameters.maximumSampleOffset,
+                            max(parameters.minimumAmplitude, sampleRadius + 20))
+
+        return content
+            .compositingGroup()
+            .visualEffect { effects, proxy in
+                let size = proxy.size
+                let sizeOK = size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
+
+                let clamped = Array(states.prefix(64))
+                var packed: [Float] = []
+                if sizeOK {
+                    packed.reserveCapacity(clamped.count * 4)
+                    for state in clamped {
+                        let x = Float(state.center.x).isFinite ? Float(state.center.x) : 0
+                        let y = Float(state.center.y).isFinite ? Float(state.center.y) : 0
+                        let a = Float(state.age).isFinite ? Float(state.age) : 0
+                        let amp = Float(state.amplitude).isFinite ? Float(state.amplitude) : 0
+                        if amp > 0.0001 {
+                            packed.append(contentsOf: [x, y, a, amp])
+                        }
+                    }
+                }
+
+                let count = packed.count / 4
+                let isEnabled = sizeOK && count > 0
+
+                return effects.layerEffect(
+                    ShaderLibrary.rippleClusterPrismColor(
+                        .float2(size),
+                        .float(Float(parameters.wavelength)),
+                        .float(Float(parameters.speed)),
+                        .float(Float(parameters.ringWidth)),
+                        .float(Float(configuration.refractionStrength)),
+                        .float(Float(configuration.dispersion)),
+                        .float(Float(configuration.tintStrength)),
+                        .float3(configuration.tintColor.rgbVector),
+                        .floatArray(packed)
+                    ),
+                    maxSampleOffset: CGSize(width: maxSample, height: maxSample),
+                    isEnabled: isEnabled
+                )
+            }
+    }
+}
+
+/// Adds a luminous glow bloom that follows ripple crests.
+struct GlowRippleColorModifier: ViewModifier {
+    let states: [RippleState]
+    let parameters: RippleParameters
+    let configuration: RippleGlowConfiguration
+
+    func body(content: Content) -> some View {
+        let maxAmplitude = states.map(\.amplitude).max() ?? 0
+        let rippleCount = Double(states.count)
+        let countFactor = rippleCount > 0 ? (1.0 + 0.5 * log(max(1.0, rippleCount))) : 1.0
+        let sampleRadius = CGFloat(countFactor) * maxAmplitude + parameters.ringWidth
+        let maxSample = min(parameters.maximumSampleOffset,
+                            max(parameters.minimumAmplitude, sampleRadius + 25))
+
+        return content
+            .compositingGroup()
+            .visualEffect { effects, proxy in
+                let size = proxy.size
+                let sizeOK = size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
+
+                let clamped = Array(states.prefix(64))
+                var packed: [Float] = []
+                if sizeOK {
+                    packed.reserveCapacity(clamped.count * 4)
+                    for state in clamped {
+                        let x = Float(state.center.x).isFinite ? Float(state.center.x) : 0
+                        let y = Float(state.center.y).isFinite ? Float(state.center.y) : 0
+                        let a = Float(state.age).isFinite ? Float(state.age) : 0
+                        let amp = Float(state.amplitude).isFinite ? Float(state.amplitude) : 0
+                        if amp > 0.0001 {
+                            packed.append(contentsOf: [x, y, a, amp])
+                        }
+                    }
+                }
+
+                let count = packed.count / 4
+                let isEnabled = sizeOK && count > 0
+
+                return effects.layerEffect(
+                    ShaderLibrary.rippleClusterGlowColor(
+                        .float2(size),
+                        .float(Float(parameters.wavelength)),
+                        .float(Float(parameters.speed)),
+                        .float(Float(parameters.ringWidth)),
+                        .float(Float(configuration.glowStrength)),
+                        .float(Float(configuration.highlightPower)),
+                        .float(Float(configuration.highlightBoost)),
+                        .float3(configuration.glowColor.rgbVector),
+                        .floatArray(packed)
+                    ),
+                    maxSampleOffset: CGSize(width: maxSample, height: maxSample),
+                    isEnabled: isEnabled
+                )
+            }
+    }
+}
+
 /// Wrap any content with a reusable multi-drop ripple effect.
 struct RippleField<Content: View>: View {
     @Bindable private var engine: RippleEngine
@@ -240,17 +380,20 @@ struct RippleField<Content: View>: View {
     private let content: Content
     private let eventSpace: CoordinateSpace
     private let mode: RippleMode
+    private let style: RippleFieldStyle
     @State private var containerFrameInEventSpace: CGRect = .zero
 
     init(engine: RippleEngine,
          parameters: RippleParameters = .default,
          eventSpace: CoordinateSpace = .global,
          mode: RippleMode = .multi,
+         style: RippleFieldStyle = .distortionOnly,
          @ViewBuilder content: () -> Content) {
         self._engine = Bindable(engine)
         self.parameters = parameters
         self.eventSpace = eventSpace
         self.mode = mode
+        self.style = style
         self.content = content()
     }
 
@@ -295,8 +438,23 @@ struct RippleField<Content: View>: View {
                     } else {
                         switch mode {
                         case .multi:
-                            capturedContent
-                                .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
+                            switch style {
+                            case .distortionOnly:
+                                capturedContent
+                                    .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
+                            case .prismatic(let configuration):
+                                capturedContent
+                                    .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
+                                    .modifier(PrismaticRippleColorModifier(states: localStates,
+                                                                           parameters: parameters,
+                                                                           configuration: configuration))
+                            case .luminous(let configuration):
+                                capturedContent
+                                    .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
+                                    .modifier(GlowRippleColorModifier(states: localStates,
+                                                                     parameters: parameters,
+                                                                     configuration: configuration))
+                            }
                         case .single:
                             if let first = localStates.first {
                                 capturedContent
@@ -336,5 +494,38 @@ extension View {
                      eventSpace: CoordinateSpace,
                      mode: RippleMode) -> some View {
         RippleField(engine: engine, parameters: parameters, eventSpace: eventSpace, mode: mode) { self }
+    }
+    func rippleField(engine: RippleEngine,
+                     parameters: RippleParameters = .default,
+                     eventSpace: CoordinateSpace,
+                     mode: RippleMode,
+                     style: RippleFieldStyle) -> some View {
+        RippleField(engine: engine,
+                    parameters: parameters,
+                    eventSpace: eventSpace,
+                    mode: mode,
+                    style: style) { self }
+    }
+}
+
+private extension Color {
+    var rgbVector: SIMD3<Float> {
+        #if canImport(UIKit)
+        let uiColor = UIColor(self)
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return SIMD3(Float(r), Float(g), Float(b))
+        #elseif canImport(AppKit)
+        let nsColor = NSColor(self)
+        let converted = nsColor.usingColorSpace(.deviceRGB) ?? nsColor
+        return SIMD3(Float(converted.redComponent),
+                     Float(converted.greenComponent),
+                     Float(converted.blueComponent))
+        #else
+        return SIMD3<Float>(0, 0, 0)
+        #endif
     }
 }
