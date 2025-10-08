@@ -266,6 +266,7 @@ struct PrismaticRippleColorModifier: ViewModifier {
     let configuration: RipplePrismConfiguration
 
     func body(content: Content) -> some View {
+        let tint = configuration.tintColor.rgbVector
         let maxAmplitude = states.map(\.amplitude).max() ?? 0
         let rippleCount = Double(states.count)
         let countFactor = rippleCount > 0 ? (1.0 + 0.5 * log(max(1.0, rippleCount))) : 1.0
@@ -306,7 +307,7 @@ struct PrismaticRippleColorModifier: ViewModifier {
                         .float(Float(configuration.refractionStrength)),
                         .float(Float(configuration.dispersion)),
                         .float(Float(configuration.tintStrength)),
-                        .float3(configuration.tintColor.rgbVector),
+                        .float3(tint.x, tint.y, tint.z),
                         .floatArray(packed)
                     ),
                     maxSampleOffset: CGSize(width: maxSample, height: maxSample),
@@ -323,6 +324,7 @@ struct GlowRippleColorModifier: ViewModifier {
     let configuration: RippleGlowConfiguration
 
     func body(content: Content) -> some View {
+        let glow = configuration.glowColor.rgbVector
         let maxAmplitude = states.map(\.amplitude).max() ?? 0
         let rippleCount = Double(states.count)
         let countFactor = rippleCount > 0 ? (1.0 + 0.5 * log(max(1.0, rippleCount))) : 1.0
@@ -354,6 +356,7 @@ struct GlowRippleColorModifier: ViewModifier {
                 let count = packed.count / 4
                 let isEnabled = sizeOK && count > 0
 
+
                 return effects.layerEffect(
                     ShaderLibrary.rippleClusterGlowColor(
                         .float2(size),
@@ -363,7 +366,7 @@ struct GlowRippleColorModifier: ViewModifier {
                         .float(Float(configuration.glowStrength)),
                         .float(Float(configuration.highlightPower)),
                         .float(Float(configuration.highlightBoost)),
-                        .float3(configuration.glowColor.rgbVector),
+                        .float3(glow.x, glow.y, glow.z),
                         .floatArray(packed)
                     ),
                     maxSampleOffset: CGSize(width: maxSample, height: maxSample),

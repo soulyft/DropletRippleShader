@@ -76,19 +76,19 @@ extension RippleVisualPreset {
                 ),
                 defaultState: StyleRuntimeState(
                     parameters: RippleParameters(
-                        amplitude: 13.5,
-                        wavelength: 150,
-                        speed: 2.15,
-                        decay: 1.5,
-                        ringWidth: 40,
+                        amplitude: 6.0,
+                        wavelength: 139,
+                        speed: 3.0,
+                        decay: 0.94,
+                        ringWidth: 35,
                         minimumAmplitude: baseParameters.minimumAmplitude,
                         maximumSampleOffset: 120
                     ),
                     prism: RipplePrismConfiguration(
-                        refractionStrength: 0.65,
-                        dispersion: 0.45,
-                        tintStrength: 0.38,
-                        tintColor: Color(red: 0.55, green: 0.85, blue: 1.0)
+                        refractionStrength: 1.04,
+                        dispersion: 0.96,
+                        tintStrength: 0.08,
+                        tintColor: Color(red: 16/255, green: 130/255, blue: 254/255) //hex 1082FE
                     ),
                     glow: nil
                 )
@@ -103,19 +103,19 @@ extension RippleVisualPreset {
                 ),
                 defaultState: StyleRuntimeState(
                     parameters: RippleParameters(
-                        amplitude: 15,
+                        amplitude: 6.7,
                         wavelength: 160,
-                        speed: 2.0,
-                        decay: 1.4,
+                        speed: 2.95,
+                        decay: 0.96,
                         ringWidth: 44,
                         minimumAmplitude: baseParameters.minimumAmplitude,
                         maximumSampleOffset: 140
                     ),
                     prism: nil,
                     glow: RippleGlowConfiguration(
-                        glowStrength: 0.9,
-                        highlightPower: 1.6,
-                        highlightBoost: 1.2,
+                        glowStrength: 1.6,
+                        highlightPower: 3.0,
+                        highlightBoost: 0.14,
                         glowColor: Color(red: 0.45, green: 0.8, blue: 1.0)
                     )
                 )
@@ -156,7 +156,7 @@ struct ContentView: View {
         let entry = RippleVisualPreset.catalog[selectedStyle] ?? RippleVisualPreset.catalog[.classic]!
         let currentState = styleStates[selectedStyle] ?? entry.defaultState
 
-        return ZStack {
+        ZStack {
 
             // Interactive grid (fully visible and receives gestures)
             HomeGrid(
@@ -197,74 +197,11 @@ struct ContentView: View {
         .coordinateSpace(name: rippleSpaceName)
         .contentShape(Rectangle())
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 12) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(RippleVisualPreset.allCases) { preset in
-                            if let entry = RippleVisualPreset.catalog[preset] {
-                                let definition = entry.definition
-                                let isSelected = preset == selectedStyle
-
-                                Button {
-                                    selectedStyle = preset
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: definition.systemImage)
-                                            .font(.system(size: 14, weight: .semibold))
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(definition.title)
-                                                .font(.footnote)
-                                                .fontWeight(.semibold)
-                                            Text(definition.subtitle)
-                                                .font(.caption2)
-                                                .lineLimit(1)
-                                        }
-                                    }
-                                    .foregroundStyle(isSelected ? .white : .primary)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .fill(isSelected ? definition.accent.opacity(0.85) : .ultraThinMaterial)
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                }
-
-                Button {
-                    showStyleStudio = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "slider.horizontal.3")
-                        Text("Open Ripple Studio")
-                    }
-                    .font(.footnote.weight(.semibold))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.08))
-                    )
+            RippleBottomBar(
+                selectedStyle: $selectedStyle,
+                showStyleStudio: $showStyleStudio,
+                catalog: RippleVisualPreset.catalog
             )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
         }
         .sheet(isPresented: $showStyleStudio) {
             RippleStyleControlPanel(
@@ -360,6 +297,114 @@ struct IconTile: View {
     }
 }
 
+/// Bottom control bar (extracted from ContentView.safeAreaInset) to isolate rendering problems.
+private struct RippleBottomBar: View {
+    @Binding var selectedStyle: RippleVisualPreset
+    @Binding var showStyleStudio: Bool
+    let catalog: [RippleVisualPreset: RippleStyleEntry]
+
+    var body: some View {
+        let items: [PresetItem] = RippleVisualPreset.allCases.compactMap { preset in
+            guard let entry = catalog[preset] else { return nil }
+            return PresetItem(preset: preset, definition: entry.definition)
+        }
+
+        return VStack(spacing: 12) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(items) { item in
+                        let isSelected = (item.preset == selectedStyle)
+                        PresetPill(definition: item.definition,
+                                   isSelected: isSelected) {
+                            selectedStyle = item.preset
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+
+            Button {
+                showStyleStudio = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "slider.horizontal.3")
+                    Text("Open Ripple Studio")
+                }
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.08))
+                )
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+}
+
+// Helper types to break up generics-heavy code and simplify main bar
+private struct PresetItem: Identifiable {
+    let preset: RippleVisualPreset
+    let definition: RippleStyleDefinition
+    var id: RippleVisualPreset { preset }
+}
+
+/// A small, self-contained "pill" button for a preset. Extracted to reduce
+/// type-check complexity in the main bottom bar.
+private struct PresetPill: View {
+    let definition: RippleStyleDefinition
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: definition.systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(definition.title)
+                        .font(.footnote)
+                        .fontWeight(.semibold)
+                    Text(definition.subtitle)
+                        .font(.caption2)
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(isSelected ? .white : .primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                ZStack {
+                    // Base material background
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    // Selected tint overlay, separated so the conditional doesn't live
+                    // inside a complex ShapeStyle generic.
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(definition.accent.opacity(0.85))
+                    }
+                }
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct RippleStyleControlPanel: View {
     @Binding var selection: RippleVisualPreset
     @Binding var styleStates: [RippleVisualPreset: StyleRuntimeState]
@@ -416,27 +461,27 @@ struct RippleStyleControlPanel: View {
     private func waveParameterSection(binding: Binding<StyleRuntimeState>) -> some View {
         Section {
             ParameterSliderRow("Amplitude",
-                               value: binding.parameterBinding(\.parameters.amplitude),
+                               value: binding.parameterBinding(\RippleParameters.amplitude),
                                range: 6...26,
                                step: 0.5,
                                suffix: " pt")
             ParameterSliderRow("Wavelength",
-                               value: binding.parameterBinding(\.parameters.wavelength),
+                               value: binding.parameterBinding(\RippleParameters.wavelength),
                                range: 100...220,
                                step: 1,
                                suffix: " pt")
             ParameterSliderRow("Speed",
-                               value: binding.parameterBinding(\.parameters.speed),
+                               value: binding.parameterBinding(\RippleParameters.speed),
                                range: 0.8...3.0,
                                step: 0.05,
                                suffix: " ×")
             ParameterSliderRow("Ring width",
-                               value: binding.parameterBinding(\.parameters.ringWidth),
+                               value: binding.parameterBinding(\RippleParameters.ringWidth),
                                range: 20...72,
                                step: 1,
                                suffix: " pt")
             ParameterSliderRow("Decay",
-                               value: binding.parameterBinding(\.parameters.decay),
+                               value: binding.parameterBinding(\RippleParameters.decay),
                                range: 0.8...2.6,
                                step: 0.05,
                                suffix: " ×")
@@ -446,7 +491,8 @@ struct RippleStyleControlPanel: View {
     }
 
     private func prismSection(binding: Binding<RipplePrismConfiguration>) -> some View {
-        Section("Prismatic Refraction") {
+        
+        Section {
             ParameterSliderRow("Refraction",
                                value: binding.binding(for: \.refractionStrength),
                                range: 0.2...1.4,
@@ -470,7 +516,7 @@ struct RippleStyleControlPanel: View {
     }
 
     private func glowSection(binding: Binding<RippleGlowConfiguration>) -> some View {
-        Section("Luminous Bloom") {
+        Section {
             ParameterSliderRow("Glow strength",
                                value: binding.binding(for: \.glowStrength),
                                range: 0...1.8,
