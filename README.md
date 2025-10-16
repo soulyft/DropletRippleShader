@@ -1,4 +1,4 @@
-# DropletRipple
+# DropletRippleShader
 
 SwiftUI + Metal ripple field (single/multi) using stitchable shaders.
 
@@ -9,7 +9,7 @@ SwiftUI + Metal ripple field (single/multi) using stitchable shaders.
 ## Add via SPM
 Use Xcode “Add Package” with:
 
-https://github.com/<YOUR_ORG_OR_USER>/DropletRipple.git
+https://github.com/soulyft/DropletRippleShader.git
 
 ## Usage
 ```swift

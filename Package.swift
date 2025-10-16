@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "DropletRipple",
+    name: "DropletRippleShader",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
@@ -18,10 +18,16 @@ let package = Package(
                 "Core",
                 "Modifiers",
                 "View",
-                "Support",
-                "Shaders"
+                "Support"
             ],
-            resources: []
+            resources: [
+                .process("Shaders")
+            ]
+        ),
+        .testTarget(
+            name: "RippleFieldTests",
+            dependencies: ["RippleField"],
+            path: "Tests/RippleFieldTests"
         )
         // Examples are not an SPM target; they’re for local running only.
     ]
