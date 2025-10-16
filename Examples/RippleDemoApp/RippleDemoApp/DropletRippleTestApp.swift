@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import RippleField
 
 @main
 struct DropletRippleTestApp: App {

@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "DropletRipple",
+    name: "DropletRippleShader",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
