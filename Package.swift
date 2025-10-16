@@ -18,10 +18,11 @@ let package = Package(
                 "Core",
                 "Modifiers",
                 "View",
-                "Support",
-                "Shaders"
+                "Support"
             ],
-            resources: []
+            resources: [
+                .process("Shaders")
+            ]
         )
         // Examples are not an SPM target; they’re for local running only.
     ]
