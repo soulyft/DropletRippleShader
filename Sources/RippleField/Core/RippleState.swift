@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 public struct RippleState: Equatable {
     public var center: CGPoint

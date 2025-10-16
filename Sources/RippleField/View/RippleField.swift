@@ -42,57 +42,55 @@ public struct RippleField<Content: View>: View {
                 }
             )
 
-        return Group {
-            if engine.isIdle {
-                capturedContent
-            } else {
-                TimelineView(.animation) { timeline in
-                    let states = engine.rippleStates(at: timeline.date, parameters: parameters)
-                    let localStates = states.map { state -> RippleState in
-                        guard containerFrameInEventSpace.origin.x.isFinite,
-                              containerFrameInEventSpace.origin.y.isFinite,
-                              containerFrameInEventSpace.width.isFinite,
-                              containerFrameInEventSpace.height.isFinite else {
-                            return state
-                        }
-                        var adjusted = state
-                        adjusted.center.x -= containerFrameInEventSpace.minX
-                        adjusted.center.y -= containerFrameInEventSpace.minY
-                        return adjusted
+        if engine.isIdle {
+            capturedContent
+        } else {
+            TimelineView(.animation) { timeline in
+                let states = engine.rippleStates(at: timeline.date, parameters: parameters)
+                let localStates = states.map { state -> RippleState in
+                    guard containerFrameInEventSpace.origin.x.isFinite,
+                          containerFrameInEventSpace.origin.y.isFinite,
+                          containerFrameInEventSpace.width.isFinite,
+                          containerFrameInEventSpace.height.isFinite else {
+                        return state
                     }
+                    var adjusted = state
+                    adjusted.center.x -= containerFrameInEventSpace.minX
+                    adjusted.center.y -= containerFrameInEventSpace.minY
+                    return adjusted
+                }
 
-                    if localStates.isEmpty {
-                        capturedContent
-                    } else {
-                        switch mode {
-                        case .multi:
-                            switch style {
-                            case .distortionOnly:
-                                capturedContent
-                                    .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
-                            case .prismatic(let configuration):
-                                capturedContent
-                                    .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
-                                    .modifier(PrismaticRippleColorModifier(states: localStates,
-                                                                           parameters: parameters,
-                                                                           configuration: configuration))
-                            case .luminous(let configuration):
-                                capturedContent
-                                    .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
-                                    .modifier(GlowRippleColorModifier(states: localStates,
-                                                                     parameters: parameters,
-                                                                     configuration: configuration))
-                            }
-                        case .single:
-                            if let first = localStates.first {
-                                capturedContent
-                                    .modifier(SingleRippleModifier(center: first.center,
-                                                                   age: first.age,
-                                                                   amplitude: first.amplitude,
-                                                                   parameters: parameters))
-                            } else {
-                                capturedContent
-                            }
+                if localStates.isEmpty {
+                    capturedContent
+                } else {
+                    switch mode {
+                    case .multi:
+                        switch style {
+                        case .distortionOnly:
+                            capturedContent
+                                .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
+                        case .prismatic(let configuration):
+                            capturedContent
+                                .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
+                                .modifier(PrismaticRippleColorModifier(states: localStates,
+                                                                       parameters: parameters,
+                                                                       configuration: configuration))
+                        case .luminous(let configuration):
+                            capturedContent
+                                .modifier(MultiRippleModifier(states: localStates, parameters: parameters))
+                                .modifier(GlowRippleColorModifier(states: localStates,
+                                                                 parameters: parameters,
+                                                                 configuration: configuration))
+                        }
+                    case .single:
+                        if let first = localStates.first {
+                            capturedContent
+                                .modifier(SingleRippleModifier(center: first.center,
+                                                               age: first.age,
+                                                               amplitude: first.amplitude,
+                                                               parameters: parameters))
+                        } else {
+                            capturedContent
                         }
                     }
                 }
