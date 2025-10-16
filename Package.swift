@@ -23,6 +23,11 @@ let package = Package(
             resources: [
                 .process("Shaders")
             ]
+        ),
+        .testTarget(
+            name: "RippleFieldTests",
+            dependencies: ["RippleField"],
+            path: "Tests/RippleFieldTests"
         )
         // Examples are not an SPM target; they’re for local running only.
     ]
