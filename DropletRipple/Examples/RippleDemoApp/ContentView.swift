@@ -7,6 +7,7 @@
 
 import SwiftUI
 import QuartzCore
+import RippleField
 
 enum RippleVisualPreset: String, CaseIterable, Identifiable {
     case classic
