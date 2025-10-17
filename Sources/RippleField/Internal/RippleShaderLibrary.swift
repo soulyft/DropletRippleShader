@@ -18,7 +18,7 @@ enum RippleShaderLibrary {
         }
 
         do {
-            let shaderLibrary = try ShaderLibrary(libraryURL)
+            let shaderLibrary = try ShaderLibrary(url: libraryURL)
             cachedLibrary = shaderLibrary
             return shaderLibrary
         } catch {
