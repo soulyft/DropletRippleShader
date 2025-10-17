@@ -9,12 +9,7 @@ enum RippleMetal {
     private static func candidateBundles() -> [Bundle] {
         var bundles: [Bundle] = []
 
-        #if SWIFT_PACKAGE
-        bundles.append(Bundle.module)
-        #else
         bundles.append(Bundle(for: BundleToken.self))
-        #endif
-
         bundles.append(Bundle.main)
         bundles.append(contentsOf: Bundle.allBundles)
 
@@ -37,11 +32,11 @@ enum RippleMetal {
 
     #if canImport(Metal)
     static func makeLibrary(on device: MTLDevice) throws -> MTLLibrary {
-        if let lib = try? device.makeDefaultLibrary(bundle: .module) {
+        if let lib = device.makeDefaultLibrary() {
             return lib
         }
 
-        if let lib = device.makeDefaultLibrary() {
+        if let url = shaderLibraryURL(), let lib = try? device.makeLibrary(URL: url) {
             return lib
         }
 
