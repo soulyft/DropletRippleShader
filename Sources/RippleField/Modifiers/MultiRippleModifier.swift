@@ -42,7 +42,7 @@ struct MultiRippleModifier: ViewModifier {
                 let isEnabled = sizeOK && count > 0
 
                 return effects.distortionEffect(
-                    ShaderLibrary.rippleCluster(
+                    RippleShaderLibrary.rippleCluster(
                         .float2(size),                               // size (points)
                         .float(Float(parameters.wavelength)),        // wavelength
                         .float(Float(parameters.speed)),             // speed
