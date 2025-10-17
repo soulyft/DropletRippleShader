@@ -5,28 +5,18 @@ import Metal
 
 enum RippleMetal {
     private final class BundleToken {}
-    private static var hasLoggedBundlePath = false
 
-    private static var candidateBundles: [Bundle] {
+    private static func candidateBundles() -> [Bundle] {
         var bundles: [Bundle] = []
 
-        #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
-        // Primary candidate: the bundle that defines RippleMetal itself (SwiftPM target bundle).
         bundles.append(Bundle(for: BundleToken.self))
+        bundles.append(Bundle.main)
+        bundles.append(contentsOf: Bundle.allBundles)
 
-        // Additional fallbacks that might host the metallib when linked into an app.
-        bundles.append(contentsOf: Bundle.allBundles)
+        #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
         bundles.append(contentsOf: Bundle.allFrameworks)
-        #else
-        bundles.append(contentsOf: Bundle.allBundles)
         #endif
 
-        // Ensure the main bundle is considered even if duplicate removal occurs later.
-        if !bundles.contains(where: { $0 === Bundle.main }) {
-            bundles.append(Bundle.main)
-        }
-
-        // Deduplicate while preserving order.
         var seen = Set<ObjectIdentifier>()
         var unique: [Bundle] = []
         for bundle in bundles {
@@ -40,60 +30,64 @@ enum RippleMetal {
         return unique
     }
 
-    private static func defaultLibraryURL() -> URL? {
-        for bundle in candidateBundles {
-            if let url = bundle.url(forResource: "default", withExtension: "metallib") {
-                #if DEBUG
-                if !hasLoggedBundlePath {
-                    print("RippleField: loading Metal library from \(bundle.bundleURL.lastPathComponent)")
-                    hasLoggedBundlePath = true
-                }
-                #endif
-                return url
-            }
-
-            if let resourceURL = bundle.resourceURL {
-                let fallback = resourceURL.appendingPathComponent("default.metallib")
-                if FileManager.default.fileExists(atPath: fallback.path) {
-                    #if DEBUG
-                    if !hasLoggedBundlePath {
-                        print("RippleField: loading Metal library from \(bundle.bundleURL.lastPathComponent)")
-                        hasLoggedBundlePath = true
-                    }
-                    #endif
-                    return fallback
-                }
-            }
-        }
-
-        return nil
-    }
-
     #if canImport(Metal)
     static func makeLibrary(on device: MTLDevice) throws -> MTLLibrary {
-        if let url = defaultLibraryURL() {
-            if let library = try? device.makeLibrary(URL: url) {
-                return library
-            }
-        }
-
         if let lib = device.makeDefaultLibrary() {
             return lib
         }
 
-        if let url = defaultLibraryURL() {
-            throw NSError(domain: "RippleField",
-                          code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "RippleField: Failed to load Metal library at \(url.path)"])
+        if let url = shaderLibraryURL(), let lib = try? device.makeLibrary(URL: url) {
+            return lib
         }
 
         throw NSError(domain: "RippleField",
                       code: -1,
-                      userInfo: [NSLocalizedDescriptionKey: "RippleField: No Metal library found (bundle + default lookup failed)"])
+                      userInfo: [NSLocalizedDescriptionKey: "RippleField: No Metal library found"])
     }
     #endif
 
     static func shaderLibraryURL() -> URL? {
-        return defaultLibraryURL()
+        for bundle in candidateBundles() {
+            if let url = bundle.url(forResource: "default", withExtension: "metallib") {
+                return url
+            }
+        }
+        return nil
     }
 }
+
+#if canImport(Metal)
+enum RippleShaderProgram {
+    case cluster
+    case clusterPrismColor
+    case clusterGlowColor
+}
+
+func makeFunction(for program: RippleShaderProgram,
+                  device: MTLDevice) throws -> MTLFunction {
+    let lib = try RippleMetal.makeLibrary(on: device)
+
+    #if DEBUG
+    print("RippleField Metal functions:", lib.functionNames.sorted())
+    #endif
+
+    let functionName: String = {
+        switch program {
+        case .cluster:
+            return "rippleCluster"
+        case .clusterPrismColor:
+            return "rippleClusterPrismColor"
+        case .clusterGlowColor:
+            return "rippleClusterGlowColor"
+        }
+    }()
+
+    guard let fn = lib.makeFunction(name: functionName) else {
+        throw NSError(domain: "RippleField",
+                      code: -2,
+                      userInfo: [NSLocalizedDescriptionKey:
+                        "Missing Metal function \(functionName). Available: \(lib.functionNames.sorted())"])
+    }
+    return fn
+}
+#endif
