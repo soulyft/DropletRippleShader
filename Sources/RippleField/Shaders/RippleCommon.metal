@@ -4,8 +4,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-constexpr float rippleTau = 6.28318530718;
-constexpr int rippleMaxFloatCount = 64 * 4;
+constant float rippleTau = 6.28318530718f;
+constant int rippleMaxFloatCount = 64 * 4;
 
 inline bool rippleScalarInvalid(float value) {
     return !isfinite(value);
