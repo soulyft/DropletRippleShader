@@ -17,7 +17,7 @@ struct SingleRippleModifier: ViewModifier {
             .compositingGroup()
             .visualEffect { effects, proxy in
                 return effects.distortionEffect(
-                    ShaderLibrary.ripple(
+                    RippleShaderLibrary.ripple(
                         .float2(proxy.size),
                         .float2(center),
                         .float(Float(age)),

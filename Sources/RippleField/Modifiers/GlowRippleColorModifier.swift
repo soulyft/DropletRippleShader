@@ -41,7 +41,7 @@ struct GlowRippleColorModifier: ViewModifier {
 
 
                 return effects.layerEffect(
-                    ShaderLibrary.rippleClusterGlowColor(
+                    RippleShaderLibrary.rippleClusterGlowColor(
                         .float2(size),
                         .float(Float(parameters.wavelength)),
                         .float(Float(parameters.speed)),

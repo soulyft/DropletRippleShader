@@ -40,7 +40,7 @@ struct PrismaticRippleColorModifier: ViewModifier {
                 let isEnabled = sizeOK && count > 0
 
                 return effects.layerEffect(
-                    ShaderLibrary.rippleClusterPrismColor(
+                    RippleShaderLibrary.rippleClusterPrismColor(
                         .float2(size),
                         .float(Float(parameters.wavelength)),
                         .float(Float(parameters.speed)),
