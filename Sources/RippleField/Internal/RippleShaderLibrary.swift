@@ -61,3 +61,25 @@ enum RippleShaderLibrary {
         makeShader(named: "rippleClusterGlowColor", arguments: arguments)
     }
 }
+
+// In package (RippleField target)
+import Foundation
+import Metal
+
+public enum RippleDiagnostics {
+    public static func ping(_ note: String = "hi") {
+        print("RippleField.ping:", note)
+    }
+
+    public static func verifyMetal() {
+        guard let dev = MTLCreateSystemDefaultDevice() else {
+            print("RippleField: no Metal device"); return
+        }
+        do {
+            let lib = try RippleMetal.makeLibrary(on: dev)
+            print("RippleField metallib symbols:", lib.functionNames.sorted())
+        } catch {
+            print("RippleField: makeLibrary failed ->", error)
+        }
+    }
+}
