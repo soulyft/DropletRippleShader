@@ -5,7 +5,7 @@ let package = Package(
     name: "DropletRippleShader",
     platforms: [
         .iOS(.v17),
-        .macOS(.v14),
+        .macOS(.v14)
     ],
     products: [
         .library(name: "RippleField", targets: ["RippleField"]),
@@ -13,22 +13,15 @@ let package = Package(
     targets: [
         .target(
             name: "RippleField",
-            path: "Sources/RippleField",
-            sources: [
-                "Core",
-                "Modifiers",
-                "View",
-                "Support"
-            ],
-            resources: [
-                .process("Shaders")
-            ]
+            // Point at the folder that contains Core/, Modifiers/, View/, Shaders/, etc.
+            path: "Sources/RippleField"
+            // ⛔️ Do NOT specify `sources:` subfolders; let SwiftPM discover all Swift/.metal files inside.
+            // ⛔️ Do NOT put .metal in `resources:` for SwiftUI stitchable shaders.
         ),
         .testTarget(
             name: "RippleFieldTests",
             dependencies: ["RippleField"],
             path: "Tests/RippleFieldTests"
-        )
-        // Examples are not an SPM target; they’re for local running only.
+        ),
     ]
 )
