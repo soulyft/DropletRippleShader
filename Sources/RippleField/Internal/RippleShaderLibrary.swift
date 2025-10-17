@@ -1,5 +1,4 @@
 import SwiftUI
-import Metal
 import Foundation
 
 enum RippleShaderLibrary {
@@ -14,18 +13,17 @@ enum RippleShaderLibrary {
             return cachedLibrary
         }
 
-        guard let device = MTLCreateSystemDefaultDevice() else {
+        guard let libraryURL = RippleMetal.shaderLibraryURL() else {
             return nil
         }
 
         do {
-            let metalLibrary = try RippleMetal.makeLibrary(on: device)
-            let shaderLibrary = ShaderLibrary(library: metalLibrary)
+            let shaderLibrary = try ShaderLibrary(libraryURL)
             cachedLibrary = shaderLibrary
             return shaderLibrary
         } catch {
             #if DEBUG
-            print("RippleField: Failed to load Metal library: \(error)")
+            print("RippleField: Failed to load Metal library at \(libraryURL): \(error)")
             #endif
             return nil
         }
