@@ -6,8 +6,23 @@ import Metal
 enum RippleMetal {
     private final class BundleToken {}
 
-    private static func candidateBundles() -> [Bundle] {
+    #if canImport(Metal)
+    private static let expectedFunctionNames: Set<String> = [
+        "ripple",
+        "rippleCluster",
+        "rippleClusterPrismColor",
+        "rippleClusterGlowColor"
+    ]
+
+    private static var didLogSelection = false
+    #endif
+
+    private static func orderedCandidateBundles() -> [Bundle] {
         var bundles: [Bundle] = []
+
+        #if SWIFT_PACKAGE
+        bundles.append(Bundle.module)
+        #endif
 
         bundles.append(Bundle(for: BundleToken.self))
         bundles.append(Bundle.main)
@@ -17,12 +32,11 @@ enum RippleMetal {
         bundles.append(contentsOf: Bundle.allFrameworks)
         #endif
 
-        var seen = Set<ObjectIdentifier>()
+        var seen = Set<URL>()
         var unique: [Bundle] = []
         for bundle in bundles {
-            let identifier = ObjectIdentifier(bundle)
-            if !seen.contains(identifier) {
-                seen.insert(identifier)
+            let url = bundle.bundleURL
+            if seen.insert(url).inserted {
                 unique.append(bundle)
             }
         }
@@ -31,29 +45,62 @@ enum RippleMetal {
     }
 
     #if canImport(Metal)
+    private static func containsExpectedFunctions(_ library: MTLLibrary) -> Bool {
+        !expectedFunctionNames.isDisjoint(with: Set(library.functionNames))
+    }
+
+    private static func logSelection(for library: MTLLibrary, origin: String) {
+        guard !didLogSelection else { return }
+        didLogSelection = true
+
+        print("RippleField: using metallib from \(origin)")
+        print("RippleField: picked names: \(library.functionNames.sorted())")
+    }
+
     static func makeLibrary(on device: MTLDevice) throws -> MTLLibrary {
-        if let lib = device.makeDefaultLibrary() {
-            return lib
+        #if SWIFT_PACKAGE
+        if let moduleLibrary = try? device.makeDefaultLibrary(bundle: Bundle.module),
+           containsExpectedFunctions(moduleLibrary) {
+            let path = Bundle.module.url(forResource: "default", withExtension: "metallib")?.path ?? Bundle.module.bundleURL.appendingPathComponent("default.metallib").path
+            logSelection(for: moduleLibrary, origin: path)
+            return moduleLibrary
         }
 
-        if let url = shaderLibraryURL(), let lib = try? device.makeLibrary(URL: url) {
-            return lib
+        if let moduleURL = Bundle.module.url(forResource: "default", withExtension: "metallib"),
+           let moduleLibrary = try? device.makeLibrary(URL: moduleURL),
+           containsExpectedFunctions(moduleLibrary) {
+            logSelection(for: moduleLibrary, origin: moduleURL.path)
+            return moduleLibrary
+        }
+        #endif
+
+        for bundle in orderedCandidateBundles() {
+            if let metallibURL = bundle.url(forResource: "default", withExtension: "metallib"),
+               let library = try? device.makeLibrary(URL: metallibURL),
+               containsExpectedFunctions(library) {
+                logSelection(for: library, origin: metallibURL.path)
+                return library
+            }
+
+            if let library = try? device.makeDefaultLibrary(bundle: bundle),
+               containsExpectedFunctions(library) {
+                let path = bundle.bundleURL.appendingPathComponent("default.metallib").path
+                logSelection(for: library, origin: path)
+                return library
+            }
+        }
+
+        if let library = device.makeDefaultLibrary(),
+           containsExpectedFunctions(library) {
+            logSelection(for: library, origin: "process default library")
+            return library
         }
 
         throw NSError(domain: "RippleField",
                       code: -1,
-                      userInfo: [NSLocalizedDescriptionKey: "RippleField: No Metal library found"])
+                      userInfo: [NSLocalizedDescriptionKey: "No metallib with ripple shaders found"])
     }
     #endif
-
-    static func shaderLibraryURL() -> URL? {
-        for bundle in candidateBundles() {
-            if let url = bundle.url(forResource: "default", withExtension: "metallib") {
-                return url
-            }
-        }
-        return nil
-    }
 }
 
 #if canImport(Metal)
