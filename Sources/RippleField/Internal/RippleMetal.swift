@@ -23,20 +23,8 @@ enum RippleMetal {
     private static var didLogSelection = false
     #endif
 
-    private static func moduleBundle() -> Bundle? {
-        #if SWIFT_PACKAGE
-        return Bundle.module
-        #else
-        return nil
-        #endif
-    }
-
     private static func orderedCandidateBundles() -> [Bundle] {
         var bundles: [Bundle] = []
-
-        if let moduleBundle = moduleBundle() {
-            bundles.append(moduleBundle)
-        }
 
         bundles.append(Bundle(for: BundleToken.self))
         bundles.append(Bundle.main)
@@ -68,7 +56,7 @@ enum RippleMetal {
         didLogSelection = true
 
         print("RippleField: using metallib from \(origin)")
-        print("RippleField: picked names: \(library.functionNames.sorted())")
+        print("RippleField: functions = \(library.functionNames.sorted())")
     }
 
     private static func wrap(_ library: MTLLibrary, url: URL?, origin: String) -> SelectedLibrary {
@@ -115,10 +103,6 @@ func makeFunction(for program: RippleShaderProgram,
                   device: MTLDevice) throws -> MTLFunction {
     let selection = try RippleMetal.makeLibrary(on: device)
     let lib = selection.library
-
-    #if DEBUG
-    print("RippleField Metal functions:", lib.functionNames.sorted())
-    #endif
 
     let functionName: String = {
         switch program {

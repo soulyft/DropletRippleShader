@@ -30,7 +30,7 @@ enum RippleShaderLibrary {
 
             if let url = selection.url {
                 do {
-                    let shaderLibrary = try ShaderLibrary(url)
+                    let shaderLibrary = try ShaderLibrary(url: url)
                     cachedLibrary = shaderLibrary
 
                     #if DEBUG
