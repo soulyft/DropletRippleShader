@@ -26,24 +26,42 @@ enum RippleShaderLibrary {
         }
 
         do {
-            let metalLibrary = try RippleMetal.makeLibrary(on: device)
-            let shaderLibrary = ShaderLibrary(library: metalLibrary)
-            cachedLibrary = shaderLibrary
+            let selection = try RippleMetal.makeLibrary(on: device)
 
-            #if DEBUG
-            if !didLogShaderNames {
-                didLogShaderNames = true
-                print("RippleField: ShaderLibrary names: \(metalLibrary.functionNames.sorted())")
+            if let url = selection.url {
+                do {
+                    let shaderLibrary = try ShaderLibrary(url)
+                    cachedLibrary = shaderLibrary
+
+                    #if DEBUG
+                    if !didLogShaderNames {
+                        didLogShaderNames = true
+                        print("RippleField: ShaderLibrary names: \(selection.library.functionNames.sorted()) from \(selection.originDescription)")
+                    }
+                    #endif
+
+                    return shaderLibrary
+                } catch {
+                    #if DEBUG
+                    print("RippleField: Failed to create ShaderLibrary from URL \(url): \(error)")
+                    #endif
+                }
+            } else {
+                #if DEBUG
+                if !didLogShaderNames {
+                    didLogShaderNames = true
+                    print("RippleField: selected Metal library lacks file URL; names: \(selection.library.functionNames.sorted()) from \(selection.originDescription)")
+                }
+                #endif
             }
-            #endif
-
-            return shaderLibrary
         } catch {
             #if DEBUG
             print("RippleField: Failed to create ShaderLibrary from Metal library: \(error)")
             #endif
             return nil
         }
+
+        return nil
         #else
         return nil
         #endif
@@ -97,8 +115,8 @@ public enum RippleDiagnostics {
             print("RippleField: no Metal device"); return
         }
         do {
-            let lib = try RippleMetal.makeLibrary(on: dev)
-            print("RippleField metallib symbols:", lib.functionNames.sorted())
+            let selection = try RippleMetal.makeLibrary(on: dev)
+            print("RippleField metallib symbols:", selection.library.functionNames.sorted())
         } catch {
             print("RippleField: makeLibrary failed ->", error)
         }

@@ -7,6 +7,12 @@ enum RippleMetal {
     private final class BundleToken {}
 
     #if canImport(Metal)
+    struct SelectedLibrary {
+        let library: MTLLibrary
+        let url: URL?
+        let originDescription: String
+    }
+
     private static let expectedFunctionNames: Set<String> = [
         "ripple",
         "rippleCluster",
@@ -17,12 +23,20 @@ enum RippleMetal {
     private static var didLogSelection = false
     #endif
 
+    private static func moduleBundle() -> Bundle? {
+        #if SWIFT_PACKAGE
+        return Bundle.module
+        #else
+        return nil
+        #endif
+    }
+
     private static func orderedCandidateBundles() -> [Bundle] {
         var bundles: [Bundle] = []
 
-        #if SWIFT_PACKAGE
-        bundles.append(Bundle.module)
-        #endif
+        if let moduleBundle = moduleBundle() {
+            bundles.append(moduleBundle)
+        }
 
         bundles.append(Bundle(for: BundleToken.self))
         bundles.append(Bundle.main)
@@ -57,43 +71,30 @@ enum RippleMetal {
         print("RippleField: picked names: \(library.functionNames.sorted())")
     }
 
-    static func makeLibrary(on device: MTLDevice) throws -> MTLLibrary {
-        #if SWIFT_PACKAGE
-        if let moduleLibrary = try? device.makeDefaultLibrary(bundle: Bundle.module),
-           containsExpectedFunctions(moduleLibrary) {
-            let path = Bundle.module.url(forResource: "default", withExtension: "metallib")?.path ?? Bundle.module.bundleURL.appendingPathComponent("default.metallib").path
-            logSelection(for: moduleLibrary, origin: path)
-            return moduleLibrary
-        }
+    private static func wrap(_ library: MTLLibrary, url: URL?, origin: String) -> SelectedLibrary {
+        logSelection(for: library, origin: origin)
+        return SelectedLibrary(library: library, url: url, originDescription: origin)
+    }
 
-        if let moduleURL = Bundle.module.url(forResource: "default", withExtension: "metallib"),
-           let moduleLibrary = try? device.makeLibrary(URL: moduleURL),
-           containsExpectedFunctions(moduleLibrary) {
-            logSelection(for: moduleLibrary, origin: moduleURL.path)
-            return moduleLibrary
-        }
-        #endif
-
+    static func makeLibrary(on device: MTLDevice) throws -> SelectedLibrary {
         for bundle in orderedCandidateBundles() {
             if let metallibURL = bundle.url(forResource: "default", withExtension: "metallib"),
                let library = try? device.makeLibrary(URL: metallibURL),
                containsExpectedFunctions(library) {
-                logSelection(for: library, origin: metallibURL.path)
-                return library
+                return wrap(library, url: metallibURL, origin: metallibURL.path)
             }
 
             if let library = try? device.makeDefaultLibrary(bundle: bundle),
                containsExpectedFunctions(library) {
-                let path = bundle.bundleURL.appendingPathComponent("default.metallib").path
-                logSelection(for: library, origin: path)
-                return library
+                let url = bundle.url(forResource: "default", withExtension: "metallib")
+                let path = url?.path ?? bundle.bundleURL.appendingPathComponent("default.metallib").path
+                return wrap(library, url: url, origin: path)
             }
         }
 
         if let library = device.makeDefaultLibrary(),
            containsExpectedFunctions(library) {
-            logSelection(for: library, origin: "process default library")
-            return library
+            return wrap(library, url: nil, origin: "process default library")
         }
 
         throw NSError(domain: "RippleField",
@@ -112,7 +113,8 @@ enum RippleShaderProgram {
 
 func makeFunction(for program: RippleShaderProgram,
                   device: MTLDevice) throws -> MTLFunction {
-    let lib = try RippleMetal.makeLibrary(on: device)
+    let selection = try RippleMetal.makeLibrary(on: device)
+    let lib = selection.library
 
     #if DEBUG
     print("RippleField Metal functions:", lib.functionNames.sorted())

@@ -14,7 +14,11 @@ let package = Package(
         .target(
             name: "RippleField",
             // Point at the folder that contains Core/, Modifiers/, View/, Shaders/, etc.
-            path: "Sources/RippleField"
+            path: "Sources/RippleField",
+            resources: [
+                // Keep this bundle so Bundle.module resolves even when CI strips SwiftUI assets.
+                .process("Resources")
+            ]
             // ⛔️ Do NOT specify `sources:` subfolders; let SwiftPM discover all Swift/.metal files inside.
             // ⛔️ Do NOT put .metal in `resources:` for SwiftUI stitchable shaders.
         ),
