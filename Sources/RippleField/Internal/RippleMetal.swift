@@ -6,24 +6,7 @@ import Metal
 enum RippleMetal {
     private final class BundleToken {}
 
-    #if canImport(Metal)
-    struct SelectedLibrary {
-        let library: MTLLibrary
-        let url: URL?
-        let originDescription: String
-    }
-
-    private static let expectedFunctionNames: Set<String> = [
-        "ripple",
-        "rippleCluster",
-        "rippleClusterPrismColor",
-        "rippleClusterGlowColor"
-    ]
-
-    private static var didLogSelection = false
-    #endif
-
-    private static func orderedCandidateBundles() -> [Bundle] {
+    private static func candidateBundles() -> [Bundle] {
         var bundles: [Bundle] = []
 
         bundles.append(Bundle(for: BundleToken.self))
@@ -34,11 +17,11 @@ enum RippleMetal {
         bundles.append(contentsOf: Bundle.allFrameworks)
         #endif
 
-        var seen = Set<URL>()
+        var seen = Set<ObjectIdentifier>()
         var unique: [Bundle] = []
         for bundle in bundles {
-            let url = bundle.bundleURL
-            if seen.insert(url).inserted {
+            let identifier = ObjectIdentifier(bundle)
+            if seen.insert(identifier).inserted {
                 unique.append(bundle)
             }
         }
@@ -46,7 +29,25 @@ enum RippleMetal {
         return unique
     }
 
+    /// URL to the SwiftPM-compiled metallib inside this package's resource bundle.
+    static func metallibURLInModuleBundle() -> URL? {
+        #if canImport(Metal)
+        return Bundle.module.url(forResource: "default", withExtension: "metallib")
+        #else
+        return nil
+        #endif
+    }
+
     #if canImport(Metal)
+    private static let expectedFunctionNames: Set<String> = [
+        "ripple",
+        "rippleCluster",
+        "rippleClusterPrismColor",
+        "rippleClusterGlowColor"
+    ]
+
+    private static var didLogSelection = false
+
     private static func containsExpectedFunctions(_ library: MTLLibrary) -> Bool {
         !expectedFunctionNames.isDisjoint(with: Set(library.functionNames))
     }
@@ -59,30 +60,41 @@ enum RippleMetal {
         print("RippleField: functions = \(library.functionNames.sorted())")
     }
 
-    private static func wrap(_ library: MTLLibrary, url: URL?, origin: String) -> SelectedLibrary {
-        logSelection(for: library, origin: origin)
-        return SelectedLibrary(library: library, url: url, originDescription: origin)
-    }
+    static func makeLibrary(on device: MTLDevice) throws -> MTLLibrary {
+        if let moduleLib = try? device.makeDefaultLibrary(bundle: .module),
+           containsExpectedFunctions(moduleLib) {
+            logSelection(for: moduleLib, origin: Bundle.module.bundleURL.path)
+            return moduleLib
+        }
 
-    static func makeLibrary(on device: MTLDevice) throws -> SelectedLibrary {
-        for bundle in orderedCandidateBundles() {
+        if let moduleURL = metallibURLInModuleBundle(),
+           let moduleURLLib = try? device.makeLibrary(URL: moduleURL),
+           containsExpectedFunctions(moduleURLLib) {
+            logSelection(for: moduleURLLib, origin: moduleURL.path)
+            return moduleURLLib
+        }
+
+        for bundle in candidateBundles() {
             if let metallibURL = bundle.url(forResource: "default", withExtension: "metallib"),
                let library = try? device.makeLibrary(URL: metallibURL),
                containsExpectedFunctions(library) {
-                return wrap(library, url: metallibURL, origin: metallibURL.path)
+                logSelection(for: library, origin: metallibURL.path)
+                return library
             }
 
             if let library = try? device.makeDefaultLibrary(bundle: bundle),
                containsExpectedFunctions(library) {
                 let url = bundle.url(forResource: "default", withExtension: "metallib")
                 let path = url?.path ?? bundle.bundleURL.appendingPathComponent("default.metallib").path
-                return wrap(library, url: url, origin: path)
+                logSelection(for: library, origin: path)
+                return library
             }
         }
 
         if let library = device.makeDefaultLibrary(),
            containsExpectedFunctions(library) {
-            return wrap(library, url: nil, origin: "process default library")
+            logSelection(for: library, origin: "process default library")
+            return library
         }
 
         throw NSError(domain: "RippleField",
@@ -90,6 +102,19 @@ enum RippleMetal {
                       userInfo: [NSLocalizedDescriptionKey: "No metallib with ripple shaders found"])
     }
     #endif
+
+    static func shaderLibraryURL() -> URL? {
+        if let url = metallibURLInModuleBundle() {
+            return url
+        }
+
+        for bundle in candidateBundles() {
+            if let url = bundle.url(forResource: "default", withExtension: "metallib") {
+                return url
+            }
+        }
+        return nil
+    }
 }
 
 #if canImport(Metal)
@@ -101,8 +126,7 @@ enum RippleShaderProgram {
 
 func makeFunction(for program: RippleShaderProgram,
                   device: MTLDevice) throws -> MTLFunction {
-    let selection = try RippleMetal.makeLibrary(on: device)
-    let lib = selection.library
+    let lib = try RippleMetal.makeLibrary(on: device)
 
     let functionName: String = {
         switch program {

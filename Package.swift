@@ -17,7 +17,9 @@ let package = Package(
             path: "Sources/RippleField",
             resources: [
                 // Keep this bundle so Bundle.module resolves even when CI strips SwiftUI assets.
-                .process("Resources")
+                .process("Resources"),
+                // Ensure SwiftPM emits default.metallib into the module bundle.
+                .process("Shaders")
             ]
             // ⛔️ Do NOT specify `sources:` subfolders; let SwiftPM discover all Swift/.metal files inside.
             // ⛔️ Do NOT put .metal in `resources:` for SwiftUI stitchable shaders.

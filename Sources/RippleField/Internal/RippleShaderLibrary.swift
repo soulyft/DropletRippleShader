@@ -26,34 +26,28 @@ enum RippleShaderLibrary {
         }
 
         do {
-            let selection = try RippleMetal.makeLibrary(on: device)
+            if let url = RippleMetal.metallibURLInModuleBundle() {
+                let shaderLibrary = try ShaderLibrary(url: url)
+                cachedLibrary = shaderLibrary
 
-            if let url = selection.url {
-                do {
-                    let shaderLibrary = try ShaderLibrary(url: url)
-                    cachedLibrary = shaderLibrary
-
-                    #if DEBUG
-                    if !didLogShaderNames {
-                        didLogShaderNames = true
-                        print("RippleField: ShaderLibrary names: \(selection.library.functionNames.sorted()) from \(selection.originDescription)")
-                    }
-                    #endif
-
-                    return shaderLibrary
-                } catch {
-                    #if DEBUG
-                    print("RippleField: Failed to create ShaderLibrary from URL \(url): \(error)")
-                    #endif
-                }
-            } else {
                 #if DEBUG
-                if !didLogShaderNames {
+                if !didLogShaderNames, let lib = try? device.makeDefaultLibrary(bundle: .module) {
                     didLogShaderNames = true
-                    print("RippleField: selected Metal library lacks file URL; names: \(selection.library.functionNames.sorted()) from \(selection.originDescription)")
+                    print("RippleField: ShaderLibrary names: \(lib.functionNames.sorted()) from Bundle.module")
                 }
                 #endif
+
+                return shaderLibrary
             }
+
+            let lib = try RippleMetal.makeLibrary(on: device)
+
+            #if DEBUG
+            if !didLogShaderNames {
+                didLogShaderNames = true
+                print("RippleField: ShaderLibrary names (fallback MTLLibrary): \(lib.functionNames.sorted())")
+            }
+            #endif
         } catch {
             #if DEBUG
             print("RippleField: Failed to create ShaderLibrary from Metal library: \(error)")
@@ -115,8 +109,14 @@ public enum RippleDiagnostics {
             print("RippleField: no Metal device"); return
         }
         do {
-            let selection = try RippleMetal.makeLibrary(on: dev)
-            print("RippleField metallib symbols:", selection.library.functionNames.sorted())
+            if let url = RippleMetal.metallibURLInModuleBundle() {
+                print("RippleField: module metallib URL ->", url.path)
+            } else {
+                print("RippleField: module metallib URL -> NOT FOUND")
+            }
+
+            let lib = try RippleMetal.makeLibrary(on: dev)
+            print("RippleField metallib symbols:", lib.functionNames.sorted())
         } catch {
             print("RippleField: makeLibrary failed ->", error)
         }
